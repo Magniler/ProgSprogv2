@@ -34,7 +34,6 @@ object Vars {
       fv
     case CallExp(funexp, args) =>
       // note: the first field, funexp, is now an expression!
-      // TODO
       var fv = freeVars(funexp)
       for (c <- args)
         fv = fv ++ (freeVars(c))

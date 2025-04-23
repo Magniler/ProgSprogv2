@@ -12,10 +12,10 @@ object TypeChecker {
 
   def typeCheck(e: Exp, tenv: TypeEnv): Type = e match {
     case IntLit(_) => IntType()
-    case BoolLit(_) => ???
-    case FloatLit(_) => ???
-    case StringLit(_) => ???
-    case VarExp(x) => ???
+    case BoolLit(_) => BooleanType()
+    case FloatLit(_) => FloatType()
+    case StringLit(_) => StringType()
+    case VarExp(x) => tenv.getOrElse(x)
     case BinOpExp(leftexp, op, rightexp) =>
       val lefttype = typeCheck(leftexp, tenv)
       val righttype = typeCheck(rightexp, tenv)
@@ -33,42 +33,108 @@ object TypeChecker {
             case (FloatType(), StringType()) => StringType()
             case _ => throw TypeError(s"Type mismatch at '+', unexpected types ${unparse(lefttype)} and ${unparse(righttype)}", op)
           }
-        case MinusBinOp() | MultBinOp() | DivBinOp() | ModuloBinOp() | MaxBinOp() => ???
-        case EqualBinOp() => ???
-        case LessThanBinOp() | LessThanOrEqualBinOp() => ???
-        case AndBinOp() | OrBinOp() => ???
+        case MinusBinOp() | MultBinOp() | DivBinOp() | ModuloBinOp() | MaxBinOp() =>
+          (lefttype, righttype) match {
+            case (IntType(), IntType()) => IntType()
+            case (FloatType(), FloatType()) => FloatType()
+            case (IntType(), FloatType()) => FloatType()
+            case (FloatType(), IntType()) => FloatType()
+            case _ => throw TypeError(s"Type mismatch, unexpected types ${unparse(Option(lefttype))} and ${unparse(Option(righttype))}", op)
+          }
+        case EqualBinOp() => BoolType()
+        case LessThanBinOp() | LessThanOrEqualBinOp() => BoolType()
+        case AndBinOp() | OrBinOp() =>
+          (lefttype, righttype) match {
+            case (lefttype: BoolType, righttype: BoolType) => BoolType()
+            case _ => throw TypeError(s"Type mismatch, unexpected types ${unparse(Option(lefttype))} and ${unparse(Option(righttype))}", op)
+          }
       }
-    case UnOpExp(op, exp) => ???
-    case IfThenElseExp(condexp, thenexp, elseexp) => ???
+  case UnOpExp(op, exp) => op match {
+    case NegUnOp() => IntType()
+    case NotUnOp() => BoolType()
+  }
+    case IfThenElseExp(condexp, thenexp, elseexp) =>
+      val thentype = typeCheck(thenexp, tenv)
+      val elsetype = typeCheck(elseexp, tenv)
+      if (elsetype == thentype) elsetype else throw TypeError(s"Type mismatch, unexpected types ${unparse(Option(thentype))} and ${unparse(Option(elsetype))}", e)
     case BlockExp(vals, defs, exp) =>
       var tenv1 = tenv
+      for (d <- defs) {
+        val funType = makeFunType(d)
+        tenv1 = tenv1 + (d.fun -> funType)
+      }
+      // Process value declarations
       for (d <- vals) {
         val t = typeCheck(d.exp, tenv1)
         checkTypesEqual(t, d.opttype, d)
         tenv1 = tenv1 + (d.x -> d.opttype.getOrElse(t))
       }
-      ???
-    case TupleExp(exps) => TupleType(???)
+      for (d <- defs) {
+        // Create new environment with parameter types
+        var bodyEnv = tenv1
+        for (param <- d.params) {
+          val paramType = param.opttype.getOrElse(
+            throw TypeError(s"Type annotation missing at parameter ${param.x}", param)
+          )
+          bodyEnv = bodyEnv + (param.x -> paramType)
+        }
+        // check body
+        val bodyType = typeCheck(d.body, bodyEnv)
+        checkTypesEqual(bodyType, d.optrestype, d.body)
+      }
+      typeCheck(exp, tenv1)
+    case TupleExp(exps) =>
+      var types: List[Type] = List()
+      for (d <- exps) {
+        val t = List(typeCheck(d, tenv))
+        types = types:::t
+      }
+      TupleType(types)
     case MatchExp(exp, cases) =>
       val exptype = typeCheck(exp, tenv)
       exptype match {
         case TupleType(ts) =>
-          var res: Option[Type] = None
           for (c <- cases) {
             if (ts.length == c.pattern.length) {
-              ???
+              for (c <- cases) {
+                if (ts.length == c.pattern.length) {
+                  var tenv1 = tenv
+                  val z = ts.zip(c.pattern)
+                  for ((v, pat) <- z) {
+                    tenv1 = tenv1 + (pat -> v)
+                  }
+                  return typeCheck(c.exp, tenv)
+                }
+              }
             }
           }
-          res match {
-            case Some(t) => t
-            case None => throw TypeError(s"No case matches type ${unparse(exptype)}", e)
-          }
-        case _ => throw TypeError(s"Tuple expected at match, found ${unparse(exptype)}", e)
+          throw TypeError(s"No case matches type ${unparse(Option(exptype))}", e)
+        case _ => throw TypeError(s"Tuple expected at match, found ${unparse(Option(exptype))}", e)
       }
-    case CallExp(funexp, args) =>
-      ???
+    case CallExp(fun, args) =>
+      val funType = tenv.getOrElse(fun, throw TypeError(s"Unknown function ${fun}", CallExp(fun, args)))
+      funType match {
+        case FunType(paramTypes, returnType) =>
+          if (args.length != paramTypes.length) {
+            throw TypeError(s"Function ${fun} called with ${args.length} arguments but expects ${paramTypes.length} parameters", e)
+          }
+          // Type check arguments against parameter types
+          for ((arg, paramType) <- args.zip(paramTypes)) {
+            val argType = typeCheck(arg, tenv)
+            checkTypesEqual(argType, Some(paramType), arg)
+          }
+          returnType
+        case _ => throw TypeError(s"Expected a function type but found ${unparse(funType)}", e)
+      }
     case LambdaExp(params, body) =>
-      ???
+      var bodyEnv = tenv
+      for (param <- params) {
+        val paramType = param.opttype.getOrElse(throw TypeError(s"Type annotation missing at parameter ${param.id}", param))
+        bodyEnv = bodyEnv + (param.id -> paramType)
+      }
+      val resultType = typeCheck(body, bodyEnv)
+
+      FunType(params.map(_.opttype.get), resultType)
   }
 
   /**

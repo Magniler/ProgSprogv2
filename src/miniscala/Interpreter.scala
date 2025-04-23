@@ -1,7 +1,6 @@
 package miniscala
 
 import miniscala.Ast.*
-import miniscala.Unparser.unparse
 
 import scala.io.StdIn
 
@@ -11,18 +10,25 @@ import scala.io.StdIn
 object Interpreter {
 
   sealed abstract class Val
+
   case class IntVal(v: Int) extends Val
+
   case class BoolVal(v: Boolean) extends Val
+
   case class FloatVal(v: Float) extends Val
+
   case class StringVal(v: String) extends Val
+
   case class TupleVal(vs: List[Val]) extends Val
-  case class ClosureVal(params: List[FunParam], optrestype: Option[Type], body: Exp, env: Env) extends Val
+
+  case class ClosureVal(params: List[FunParam], optrestype: Option[Type], body: Exp,
+                        env: scala.collection.mutable.Map[Id, Val]) extends Val
 
   type Env = Map[Id, Val]
 
   /**
-    * Evaluates an expression.
-    */
+   * Evaluates an expression.
+   */
   def eval(e: Exp, env: Env): Val = e match {
     case IntLit(c) => IntVal(c)
     case BoolLit(c) => BoolVal(c)
@@ -119,11 +125,11 @@ object Interpreter {
         case MaxBinOp() =>
           (leftval, rightval) match {
             case (IntVal(v1), IntVal(v2)) => IntVal(v1)
-              if v1 > v2 else IntVal(v2)
+              if v1 > v2 then IntVal(v1) else IntVal(v2)
             case (FloatVal(v1), IntVal(v2)) => FloatVal(v1)
-              if v1 > v2 else FloatVal(v2)
+              if v1 > v2 then FloatVal(v1) else FloatVal(v2)
             case (IntVal(v1), FloatVal(v2)) => FloatVal(v1)
-              if v1 > v2 else FloatVal(v2)
+              if v1 > v2 then FloatVal(v1) else FloatVal(v2)
             case _ => throw InterpreterError(s"Type mismatch at 'Max', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
             case AndBinOp() =>
               (leftval, rightval) match {
@@ -154,7 +160,7 @@ object Interpreter {
       }
     case IfThenElseExp(condexp, thenexp, elseexp) =>
       if BoolVal(condexp) then eval(thenexp, env) else eval(elseexp, env)
-    case b @ BlockExp(vals, defs, exp) =>
+    case b@BlockExp(vals, defs, exp) =>
       var env1 = env
       for (d <- vals ++ defs)
         env1 = eval(d, env1, b)
@@ -181,22 +187,25 @@ object Interpreter {
         case _ => throw InterpreterError(s"Tuple expected at match, found ${valueToString(expval)}", e)
       }
     case CallExp(funexp, args) =>
-      // First, evaluate the function expression to get a closure
+      // get a closure
       val funVal = eval(funexp, env)
       funVal match {
-        case ClosureVal(params, optrestype, body, closureEnv) =>
-          // Ensure the number of arguments matches the number of parameters
+        case closure@ClosureVal(params, optrestype, body, closureEnv, selfRef) =>
           if (args.length != params.length) {
             throw InterpreterError(s"Function called with ${args.length} arguments but expects ${params.length} parameters", e)
           }
-          // Evaluate all arguments in the current environment
+          // evaluate all arguments in the current environment
           val argVals = args.map(arg => eval(arg, env))
-          // Create a new environment by extending the closure's environment with parameter bindings
-          var newEnv = closureEnv
+          // Create a new environment
+          var newEnv = Map[Id, Val]() ++ closureEnv
+          // add self-reference to support recusion
+          selfRef.foreach { case (name, selfClosure) =>
+            newEnv = newEnv + (name -> selfClosure)
+          }
+          // bind the parameters
           for ((param, argVal) <- params.zip(argVals)) {
             newEnv = newEnv + (param.id -> argVal)
           }
-          // Evaluate the function body in the new environment
           eval(body, newEnv)
         case _ =>
           throw InterpreterError(s"Expected a function but found ${valueToString(funVal)}", funexp)
@@ -205,85 +214,91 @@ object Interpreter {
       // Create a closure with type annotations
       ClosureVal(params, optResultType, body, env)
 
-  /**
-    * Evaluates a declaration.
-    */
-  def eval(d: Decl, env: Env, b: BlockExp): Env = d match {
-    case ValDecl(x, opttype, exp) =>
-      env + (x -> eval(exp, env))
-    case DefDecl(fun, params, optrestype, body) =>
-      val updateEvn = (fun -> ClosureVal(params, optrestype, body, env))
-      updateEvn
-  }
-
-  /**
-    * Checks whether value `v` has type `ot` (if present), generates runtime type error otherwise.
-    */
-  def checkValueType(v: Val, ot: Option[Type], n: AstNode): Unit = ot match {
-    case Some(t) =>
-      (v, t) match {
-        case (IntVal(_), IntType()) |
-             (BoolVal(_), BoolType()) |
-             (FloatVal(_), FloatType()) |
-             (IntVal(_), FloatType()) |
-             (StringVal(_), StringType()) => // do nothing
-        case (TupleVal(vs), TupleType(ts)) if vs.length == ts.length =>
-          for ((vi, ti) <- vs.zip(ts))
-            checkValueType(vi, Some(ti), n)
-        case (ClosureVal(cparams, optcrestype, _, _), FunType(paramtypes, restype)) if cparams.length == paramtypes.length =>
-          for ((p, t) <- cparams.zip(paramtypes))
-            checkTypesEqual(t, p.opttype, n)
-          checkTypesEqual(restype, optcrestype, n)
-        case _ =>
-          throw InterpreterError(s"Type mismatch: value ${valueToString(v)} does not match type ${unparse(t)}", n)
+      /**
+       * Evaluates a declaration.
+       */
+      def eval(d: Decl, env: Env, b: BlockExp): Env = d match {
+        case ValDecl(x, opttype, exp) =>
+          env + (x -> eval(exp, env))
+        case DefDecl(fun, params, optrestype, body) =>
+          // Create a mute-Map to allow for self-reference
+          val recursiveEnv = scala.collection.mutable.Map[Id, Val]() ++ env
+          val closure = ClosureVal(params, optrestype, body, recursiveEnv)
+          // Update the env
+          recursiveEnv(fun) = closure
+          // We Return the updated original environment
+          env + (fun -> closure)
       }
-    case None => // do nothing
+
+      /**
+       * Checks whether value `v` has type `ot` (if present), generates runtime type error otherwise.
+       */
+      def checkValueType(v: Val, ot: Option[Type], n: AstNode): Unit = ot match {
+        case Some(t) =>
+          (v, t) match {
+            case (IntVal(_), IntType()) |
+                 (BoolVal(_), BoolType()) |
+                 (FloatVal(_), FloatType()) |
+                 (IntVal(_), FloatType()) |
+                 (StringVal(_), StringType()) => // do nothing
+            case (TupleVal(vs), TupleType(ts)) if vs.length == ts.length =>
+              for ((vi, ti) <- vs.zip(ts))
+                checkValueType(vi, Some(ti), n)
+            case (ClosureVal(cparams, optcrestype, _, _), FunType(paramtypes, restype)) if cparams.length == paramtypes.length =>
+              for ((p, t) <- cparams.zip(paramtypes))
+                checkTypesEqual(t, p.opttype, n)
+              checkTypesEqual(restype, optcrestype, n)
+            case _ =>
+              throw InterpreterError(s"Type mismatch: value ${valueToString(v)} does not match type ${unparse(t)}", n)
+          }
+        case None => // do nothing
+      }
+
+      /**
+       * Checks that the types `t1` and `ot2` are equal (if present), throws type error exception otherwise.
+       */
+      def checkTypesEqual(t1: Type, ot2: Option[Type], n: AstNode): Unit = ot2 match {
+        case Some(t2) =>
+          if (t1 != t2)
+            throw InterpreterError(s"Type mismatch: type ${unparse(t1)} does not match type ${unparse(t2)}", n)
+        case None => // do nothing
+      }
+
+      /**
+       * Converts a value to its string representation (for error messages).
+       */
+      def valueToString(v: Val): String = v match {
+        case IntVal(c) => c.toString
+        case FloatVal(c) => c.toString
+        case BoolVal(c) => c.toString
+        case StringVal(c) => c
+        case TupleVal(vs) => vs.map(valueToString).mkString("(", ",", ")")
+        case ClosureVal(params, _, exp, _) => // the resulting string ignores the result type annotation and the declaration environment
+          s"<(${params.map(unparse).mkString(",")}), ${unparse(exp)}>"
+      }
+
+      /**
+       * Builds an initial environment, with a value for each free variable in the program.
+       */
+      def makeInitialEnv(program: Exp): Env = {
+        var env = Map[Id, Val]()
+        for (x <- Vars.freeVars(program)) {
+          print(s"Please provide an integer value for the variable $x: ")
+          env = env + (x -> IntVal(StdIn.readInt()))
+        }
+        env
+      }
+
+      /**
+       * Prints message if option -trace is used.
+       */
+      def trace(msg: String): Unit =
+        if (Options.trace)
+          println(msg)
+
+      /**
+       * Exception thrown in case of MiniScala runtime errors.
+       */
+      class InterpreterError(msg: String, node: AstNode) extends MiniScalaError(s"Runtime error: $msg", node.pos)
   }
-
-  /**
-    * Checks that the types `t1` and `ot2` are equal (if present), throws type error exception otherwise.
-    */
-  def checkTypesEqual(t1: Type, ot2: Option[Type], n: AstNode): Unit = ot2 match {
-    case Some(t2) =>
-      if (t1 != t2)
-        throw InterpreterError(s"Type mismatch: type ${unparse(t1)} does not match type ${unparse(t2)}", n)
-    case None => // do nothing
-  }
-
-  /**
-    * Converts a value to its string representation (for error messages).
-    */
-  def valueToString(v: Val): String = v match {
-    case IntVal(c) => c.toString
-    case FloatVal(c) => c.toString
-    case BoolVal(c) => c.toString
-    case StringVal(c) => c
-    case TupleVal(vs) => vs.map(valueToString).mkString("(", ",", ")")
-    case ClosureVal(params, _, exp, _) => // the resulting string ignores the result type annotation and the declaration environment
-      s"<(${params.map(unparse).mkString(",")}), ${unparse(exp)}>"
-  }
-
-  /**
-    * Builds an initial environment, with a value for each free variable in the program.
-    */
-  def makeInitialEnv(program: Exp): Env = {
-    var env = Map[Id, Val]()
-    for (x <- Vars.freeVars(program)) {
-      print(s"Please provide an integer value for the variable $x: ")
-      env = env + (x -> IntVal(StdIn.readInt()))
-    }
-    env
-  }
-
-  /**
-    * Prints message if option -trace is used.
-    */
-  def trace(msg: String): Unit =
-    if (Options.trace)
-      println(msg)
-
-  /**
-    * Exception thrown in case of MiniScala runtime errors.
-    */
-  class InterpreterError(msg: String, node: AstNode) extends MiniScalaError(s"Runtime error: $msg", node.pos)
 }

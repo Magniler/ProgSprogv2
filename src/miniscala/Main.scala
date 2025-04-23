@@ -1,6 +1,7 @@
 package miniscala
 
 import miniscala.parser.Parser
+import miniscala.{Interpreter, MiniScalaError, TypeChecker}
 
 object Main {
 
