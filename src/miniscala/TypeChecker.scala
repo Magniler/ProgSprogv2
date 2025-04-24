@@ -12,7 +12,7 @@ object TypeChecker {
 
   def typeCheck(e: Exp, tenv: TypeEnv): Type = e match {
     case IntLit(_) => IntType()
-    case BoolLit(_) => BooleanType()
+    case BoolLit(_) => BoolType()
     case FloatLit(_) => FloatType()
     case StringLit(_) => StringType()
     case VarExp(x) => tenv.getOrElse(x)

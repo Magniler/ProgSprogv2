@@ -1,7 +1,7 @@
 package miniscala
 
 import miniscala.Ast.*
-
+import miniscala.Unparser.unparse
 import scala.io.StdIn
 
 /**
@@ -71,8 +71,7 @@ object Interpreter {
             case (FloatVal(v1), FloatVal(v2)) => FloatVal(v1 * v2)
             case (IntVal(v1), FloatVal(v2)) => FloatVal(v1 * v2)
             case (FloatVal(v1), IntVal(v2)) => FloatVal(v1 * v2)
-            case (StringVal(v1), StringVal(v2)) => StringVal(v1 * v2)
-            case (StringVal(v1), IntVal(v2)) => StringVal(v1 * v2.toString)
+            case (StringVal(v1), IntVal(v2)) => StringVal(v1.toInt * v2)
             case (StringVal(v1), FloatVal(v2)) => StringVal(v1 * v2.toString)
             case (IntVal(v1), StringVal(v2)) => StringVal(v1.toString * v2)
             case (FloatVal(v1), StringVal(v2)) => StringVal(v1.toString * v2)
@@ -190,7 +189,7 @@ object Interpreter {
       // get a closure
       val funVal = eval(funexp, env)
       funVal match {
-        case closure@ClosureVal(params, optrestype, body, closureEnv, selfRef) =>
+        case ClosureVal(params, optrestype, body, closureEnv, selfRef) =>
           if (args.length != params.length) {
             throw InterpreterError(s"Function called with ${args.length} arguments but expects ${params.length} parameters", e)
           }
@@ -229,6 +228,7 @@ object Interpreter {
           // We Return the updated original environment
           env + (fun -> closure)
       }
+  }
 
       /**
        * Checks whether value `v` has type `ot` (if present), generates runtime type error otherwise.
@@ -300,5 +300,4 @@ object Interpreter {
        * Exception thrown in case of MiniScala runtime errors.
        */
       class InterpreterError(msg: String, node: AstNode) extends MiniScalaError(s"Runtime error: $msg", node.pos)
-  }
 }

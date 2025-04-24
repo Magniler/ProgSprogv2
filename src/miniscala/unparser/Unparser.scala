@@ -74,7 +74,7 @@ object Unparser {
       for (c <- args){
         argsEval = argsEval + unparse(c, env) + ","
       }
-      fun + "(" + argsEval + ")"
+      fun.toString + "(" + argsEval + ")"
     case ValDecl(x, opttype, exp) =>
       "val " + x + ": " + opttype + " = " + unparse(exp, env)
     case DefDecl(fun, params, rtype, exp) =>

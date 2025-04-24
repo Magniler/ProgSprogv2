@@ -1,7 +1,7 @@
 package miniscala
 
 import miniscala.Options
-import miniscala.unparser.Unparser
+import miniscala.Unparser
 import miniscala.parser.Parser
 import miniscala.{Interpreter, MiniScalaError, TypeChecker}
 
