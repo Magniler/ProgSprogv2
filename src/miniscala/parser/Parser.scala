@@ -3,6 +3,8 @@ package miniscala.parser
 import miniscala.Ast.*
 import miniscala.MiniScalaError
 import miniscala.parser.*
+import miniscala.parser.Tokens.*
+import miniscala.parser.Lexer.*
 
 import java.io.{File, IOException}
 import scala.io.Source
@@ -258,10 +260,10 @@ object Parser extends PackratParsers {
   private def parseTokens(tokens: Seq[MiniScalaToken]): Option[Exp] =
     prog(MiniScalaTokenReader(tokens)) match {
       case p @ (NoSuccess(_, _) | Failure(_, _) | Error(_, _))  => throw SyntaxError(p.next.pos)
-      case Success(result, _) => result
+      case Success(result, _) => Option(result)
     }
 
-  def parse(code: String): Exp =
+  def parse(code: String): Option[Exp] =
     parseTokens(Lexer(code))
 
   def readFile(path: String): String = {

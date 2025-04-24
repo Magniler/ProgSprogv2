@@ -15,7 +15,7 @@ object TypeChecker {
     case BoolLit(_) => BoolType()
     case FloatLit(_) => FloatType()
     case StringLit(_) => StringType()
-    case VarExp(x) => tenv.getOrElse(x)
+    case VarExp(x) => tenv.getOrElse(x, throw TypeError("missing type for VarExp", e))
     case BinOpExp(leftexp, op, rightexp) =>
       val lefttype = typeCheck(leftexp, tenv)
       val righttype = typeCheck(rightexp, tenv)
@@ -31,7 +31,7 @@ object TypeChecker {
             case (StringType(), FloatType()) => StringType()
             case (IntType(), StringType()) => StringType()
             case (FloatType(), StringType()) => StringType()
-            case _ => throw TypeError(s"Type mismatch at '+', unexpected types ${unparse(lefttype)} and ${unparse(righttype)}", op)
+            case _ => throw TypeError(s"Type mismatch at '+', unexpected types ${unparse(Option(lefttype))} and ${unparse(Option(righttype))}", op)
           }
         case MinusBinOp() | MultBinOp() | DivBinOp() | ModuloBinOp() | MaxBinOp() =>
           (lefttype, righttype) match {
