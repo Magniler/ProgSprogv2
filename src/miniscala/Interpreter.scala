@@ -62,7 +62,7 @@ object Interpreter {
             case (StringVal(v1), IntVal(v2)) => IntVal(v1.toInt - v2)
             case (StringVal(v1), FloatVal(v2)) => FloatVal(v1.toFloat - v2)
             case (IntVal(v1), StringVal(v2)) => FloatVal(v1 - v2.toFloat)
-            case (FloatVal(v1), StringVal(v2)) => StringVal(v1 - v2.toFloat)
+            case (FloatVal(v1), StringVal(v2)) => FloatVal(v1 - v2.toFloat)
             case _ => throw InterpreterError(s"Type mismatch at '-', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
           }
         case MultBinOp() =>
@@ -71,10 +71,10 @@ object Interpreter {
             case (FloatVal(v1), FloatVal(v2)) => FloatVal(v1 * v2)
             case (IntVal(v1), FloatVal(v2)) => FloatVal(v1 * v2)
             case (FloatVal(v1), IntVal(v2)) => FloatVal(v1 * v2)
-            case (StringVal(v1), IntVal(v2)) => StringVal(v1.toInt * v2)
-            case (StringVal(v1), FloatVal(v2)) => StringVal(v1 * v2.toString)
-            case (IntVal(v1), StringVal(v2)) => StringVal(v1.toString * v2)
-            case (FloatVal(v1), StringVal(v2)) => StringVal(v1.toString * v2)
+            case (StringVal(v1), IntVal(v2)) => StringVal(v1 * v2)
+            case (StringVal(v1), FloatVal(v2)) => StringVal(v1 * v2.toInt)
+            case (IntVal(v1), StringVal(v2)) => StringVal(v2 * v1)
+            case (FloatVal(v1), StringVal(v2)) => StringVal(v2 * v1.toInt)
             case _ => throw InterpreterError(s"Type mismatch at '*', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
           }
         case DivBinOp() =>
@@ -125,9 +125,9 @@ object Interpreter {
           (leftval, rightval) match {
             case (IntVal(v1), IntVal(v2)) => IntVal(v1)
               if v1 > v2 then IntVal(v1) else IntVal(v2)
-            case (FloatVal(v1), IntVal(v2)) => FloatVal(v1)
+            case (FloatVal(v1), IntVal(v2)) =>
               if v1 > v2 then FloatVal(v1) else FloatVal(v2)
-            case (IntVal(v1), FloatVal(v2)) => FloatVal(v1)
+            case (IntVal(v1), FloatVal(v2)) =>
               if v1 > v2 then FloatVal(v1) else FloatVal(v2)
             case _ => throw InterpreterError(s"Type mismatch at 'Max', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
             case AndBinOp() =>
@@ -158,7 +158,11 @@ object Interpreter {
           }
       }
     case IfThenElseExp(condexp, thenexp, elseexp) =>
-      if BoolVal(condexp) then eval(thenexp, env) else eval(elseexp, env)
+      eval(condexp, env) match {
+        case BoolVal(true) => eval(thenexp, env)
+        case BoolVal(false) => eval(elseexp, env)
+        case _ => throw InterpreterError("Condition must be boolean", condexp)
+      }
     case b@BlockExp(vals, defs, exp) =>
       var env1 = env
       for (d <- vals ++ defs)
@@ -173,45 +177,58 @@ object Interpreter {
       val expval = eval(exp, env)
       expval match {
         case TupleVal(vs) =>
-          var res: Option[Val] = None
-          for (c <- cases) {
-            if (vs.length == c.pattern.length) {
-              res = res ++ c
+          var matchResult: Option[Val] = None
+          // Iterate through cases to find the first match
+          for (c <- cases if matchResult.isEmpty) {
+            if (c.pattern.length == vs.length) {
+              var newEnv = env
+              for ((patternVar, value) <- c.pattern.zip(vs)) {
+                newEnv = newEnv + (patternVar -> value)
+              }
+              // Evaluate the case expression in the new environment
+              matchResult = Some(eval(c.exp, newEnv))
             }
           }
-          res match {
-            case Some(v) => v
+          // Return the result or throw an error if no match found
+          matchResult match {
+            case Some(value) => value
             case None => throw InterpreterError(s"No case matches value ${valueToString(expval)}", e)
           }
-        case _ => throw InterpreterError(s"Tuple expected at match, found ${valueToString(expval)}", e)
+        case _ =>
+          throw InterpreterError(s"Tuple expected at match, found ${valueToString(expval)}", e)
       }
     case CallExp(funexp, args) =>
-      // get a closure
       val funVal = eval(funexp, env)
       funVal match {
-        case ClosureVal(params, optrestype, body, closureEnv, selfRef) =>
+        case ClosureVal(params, optrestype, body, closureEnv) =>
           if (args.length != params.length) {
-            throw InterpreterError(s"Function called with ${args.length} arguments but expects ${params.length} parameters", e)
+            throw InterpreterError(
+              s"Function called with ${args.length} arguments but expects ${params.length} parameters",
+              e
+            )
           }
-          // evaluate all arguments in the current environment
+          // evaluate all arguments in the current environment, not the new enviroment
           val argVals = args.map(arg => eval(arg, env))
-          // Create a new environment
-          var newEnv = Map[Id, Val]() ++ closureEnv
-          // add self-reference to support recusion
-          selfRef.foreach { case (name, selfClosure) =>
-            newEnv = newEnv + (name -> selfClosure)
-          }
-          // bind the parameters
+          // Start on new env
+          var newEnv = Map[Id, Val]()
+          // bind parameters to their argument values
           for ((param, argVal) <- params.zip(argVals)) {
-            newEnv = newEnv + (param.id -> argVal)
+            newEnv = newEnv + (param.x -> argVal)
           }
-          eval(body, newEnv)
+          // Type checking if necessary
+          for ((param, argVal) <- params.zip(argVals)) {
+            checkValueType(argVal, param.opttype, e)
+          }
+          val result = eval(body, newEnv)
+          checkValueType(result, optrestype, e)
+          result
         case _ =>
           throw InterpreterError(s"Expected a function but found ${valueToString(funVal)}", funexp)
       }
-    case LambdaExp(params, optResultType, body) =>
+    case LambdaExp(params, body) =>
       // Create a closure with type annotations
-      ClosureVal(params, optResultType, body, env)
+      ClosureVal(params, None, body, scala.collection.mutable.Map() ++ env)
+  }
 
       /**
        * Evaluates a declaration.
@@ -228,7 +245,6 @@ object Interpreter {
           // We Return the updated original environment
           env + (fun -> closure)
       }
-  }
 
       /**
        * Checks whether value `v` has type `ot` (if present), generates runtime type error otherwise.
@@ -249,7 +265,7 @@ object Interpreter {
                 checkTypesEqual(t, p.opttype, n)
               checkTypesEqual(restype, optcrestype, n)
             case _ =>
-              throw InterpreterError(s"Type mismatch: value ${valueToString(v)} does not match type ${unparse(t)}", n)
+              throw InterpreterError(s"Type mismatch: value ${valueToString(v)} does not match type ${unparse(Option(t))}", n)
           }
         case None => // do nothing
       }
@@ -260,7 +276,7 @@ object Interpreter {
       def checkTypesEqual(t1: Type, ot2: Option[Type], n: AstNode): Unit = ot2 match {
         case Some(t2) =>
           if (t1 != t2)
-            throw InterpreterError(s"Type mismatch: type ${unparse(t1)} does not match type ${unparse(t2)}", n)
+            throw InterpreterError(s"Type mismatch: type ${unparse(Option(t1))} does not match type ${unparse(Option(t2))}", n)
         case None => // do nothing
       }
 
@@ -273,8 +289,10 @@ object Interpreter {
         case BoolVal(c) => c.toString
         case StringVal(c) => c
         case TupleVal(vs) => vs.map(valueToString).mkString("(", ",", ")")
-        case ClosureVal(params, _, exp, _) => // the resulting string ignores the result type annotation and the declaration environment
-          s"<(${params.map(unparse).mkString(",")}), ${unparse(exp)}>"
+        case ClosureVal(params, _, _, _) => // the resulting string ignores the result type annotation and the declaration environment
+          // Simple format: <function: (param1, param2, ...)>
+          val paramStr = params.map(_.x).mkString(", ")
+          s"<function: ($paramStr)>"
       }
 
       /**

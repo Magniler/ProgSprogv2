@@ -111,12 +111,12 @@ object TypeChecker {
           throw TypeError(s"No case matches type ${unparse(Option(exptype))}", e)
         case _ => throw TypeError(s"Tuple expected at match, found ${unparse(Option(exptype))}", e)
       }
-    case CallExp(fun, args) =>
-      val funType = tenv.getOrElse(fun, throw TypeError(s"Unknown function ${fun}", CallExp(fun, args)))
+    case CallExp(funexp, args) =>
+      val funType = typeCheck(funexp, tenv)
       funType match {
         case FunType(paramTypes, returnType) =>
           if (args.length != paramTypes.length) {
-            throw TypeError(s"Function ${fun} called with ${args.length} arguments but expects ${paramTypes.length} parameters", e)
+            throw TypeError(s"Function ${funexp} called with ${args.length} arguments but expects ${paramTypes.length} parameters", e)
           }
           // Type check arguments against parameter types
           for ((arg, paramType) <- args.zip(paramTypes)) {
@@ -124,13 +124,13 @@ object TypeChecker {
             checkTypesEqual(argType, Some(paramType), arg)
           }
           returnType
-        case _ => throw TypeError(s"Expected a function type but found ${unparse(funType)}", e)
+        case _ => throw TypeError(s"Expected a function type but found ${unparse(Option(funType))}", e)
       }
     case LambdaExp(params, body) =>
       var bodyEnv = tenv
       for (param <- params) {
-        val paramType = param.opttype.getOrElse(throw TypeError(s"Type annotation missing at parameter ${param.id}", param))
-        bodyEnv = bodyEnv + (param.id -> paramType)
+        val paramType = param.opttype.getOrElse(throw TypeError(s"Type annotation missing at parameter ${param.x}", param))
+        bodyEnv = bodyEnv + (param.x -> paramType)
       }
       val resultType = typeCheck(body, bodyEnv)
 
@@ -150,7 +150,7 @@ object TypeChecker {
   def checkTypesEqual(t1: Type, ot2: Option[Type], n: AstNode): Unit = ot2 match {
     case Some(t2) =>
       if (t1 != t2)
-        throw TypeError(s"Type mismatch: expected type ${unparse(t2)}, found type ${unparse(t1)}", n)
+        throw TypeError(s"Type mismatch: expected type ${unparse(Option(t2))}, found type ${unparse(Option(t1))}", n)
     case None => // do nothing
   }
 

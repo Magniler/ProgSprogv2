@@ -17,11 +17,13 @@ object Main {
       val file = Options.file.get
 
       // parse the program
-      val program = Parser.parse(Parser.readFile(file))
+      val program = Parser.parse(Parser.readFile(file)).getOrElse(throw RuntimeException("the program did not parse"))
+
+
 
       // unparse the program, if enabled
       if (Options.unparse)
-        println(Unparser.unparse(program))
+        println(Unparser.unparse(program, Map[String, Interpreter.Val]()))
 
       // type check the program, if enabled
       if (Options.types) {
