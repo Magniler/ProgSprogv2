@@ -1,8 +1,8 @@
 package miniscala
 
 /**
- * Handles the command-line options and the name of the MiniScala source file.
- */
+  * Handles the command-line options and the name of the MiniScala source file.
+  */
 object Options {
 
   val usage: String =
@@ -16,6 +16,7 @@ object Options {
       |  -run      parse and run the program
       |  -types    parse and type-check the program
       |  -trace    trace when running
+      |  -lambda   parse, translate to lambda calculus, unparse and run the resulting program, and decode the resulting value as a number
     """.stripMargin
 
   var unparse = false
@@ -26,11 +27,13 @@ object Options {
 
   var trace = false
 
+  var lambda = false
+
   var file: Option[String] = None
 
   /**
-   * Reads the command-line arguments.
-   */
+    * Reads the command-line arguments.
+    */
   def read(args: Array[String]): Unit = {
     for (arg <- args) {
       if (arg.startsWith("-")) {
@@ -39,6 +42,7 @@ object Options {
           case "-run" => run = true
           case "-types" => types = true
           case "-trace" => trace = true
+          case "-lambda" => lambda = true
           case _ =>
             throw OptionsError(s"Error: option not recognized: $arg")
         }
@@ -53,7 +57,7 @@ object Options {
   }
 
   /**
-   * Exception thrown in case of illegal command-line arguments.
-   */
+    * Exception thrown in case of illegal command-line arguments.
+    */
   class OptionsError(msg: String) extends Exception(msg)
 }
