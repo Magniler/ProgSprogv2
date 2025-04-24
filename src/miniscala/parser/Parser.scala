@@ -255,7 +255,7 @@ object Parser extends PackratParsers {
 
   private lazy val not: PackratParser[UnOp] = OP("!") ^^ { _ => NotUnOp() }
 
-  private def parseTokens(tokens: Seq[MiniScalaToken]): Option[Exp[] =
+  private def parseTokens(tokens: Seq[MiniScalaToken]): Option[Exp] =
     prog(MiniScalaTokenReader(tokens)) match {
       case p @ (NoSuccess(_, _) | Failure(_, _) | Error(_, _))  => throw SyntaxError(p.next.pos)
       case Success(result, _) => result

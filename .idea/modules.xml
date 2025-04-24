@@ -2,7 +2,10 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/Miniscala-V4.iml" filepath="$PROJECT_DIR$/.idea/Miniscala-V4.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/Miniscala.iml" filepath="$PROJECT_DIR$/.idea/Miniscala.iml" />
+      <module fileurl="file://$PROJECT_DIR$/miniscala/.idea/modules/miniscala.main.iml" filepath="$PROJECT_DIR$/miniscala/.idea/modules/miniscala.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/miniscala/.idea/modules/miniscala.miniscala-build.iml" filepath="$PROJECT_DIR$/miniscala/.idea/modules/miniscala.miniscala-build.iml" />
+      <module fileurl="file://$PROJECT_DIR$/miniscala/.idea/modules/miniscala.test.iml" filepath="$PROJECT_DIR$/miniscala/.idea/modules/miniscala.test.iml" />
     </modules>
   </component>
 </project>
