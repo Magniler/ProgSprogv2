@@ -3,6 +3,8 @@ package miniscala
 import miniscala.Options
 import miniscala.Unparser
 import miniscala.parser.Parser
+import miniscala.Interpreter.{makeEmpty, makeInitialEnv}
+import miniscala.Lambda.{makeInitialEnv}
 
 object Main {
 
@@ -22,7 +24,7 @@ object Main {
 
       // unparse the program, if enabled
       if (Options.unparse)
-        println(Unparser.unparse(program, Map[String, Interpreter.Val]()))
+        println(Unparser.unparse(program, makeEmpty()))
 
       // type check the program, if enabled
       if (Options.types) {
@@ -40,8 +42,8 @@ object Main {
       // translate to lambda calculus, unparse, run, and decode result as a number, if enabled
       if (Options.lambda) {
         val encoded = Lambda.encode(program)
-        println(s"Encoded program: ${Unparser.unparse(encoded)}")
         val initialEnv = Lambda.makeInitialEnv(program)
+        // println(s"Encoded program: ${Unparser.unparse(encoded)}")
         val result = Interpreter.eval(encoded, initialEnv)
         println(s"Output from encoded program: ${Interpreter.valueToString(result)}")
         println(s"Decoded output: ${Lambda.decodeNumber(result)}")

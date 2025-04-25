@@ -1,11 +1,9 @@
 package miniscala
 
 import miniscala.Ast.*
-import miniscala.Interpreter.{BoolVal, ClosureVal, FloatVal, IntVal, StringVal, Val, eval}
+import miniscala.Interpreter.{BoolVal, ClosureVal, Env, FloatVal, IntVal, StringVal, Val, eval, extend, makeEmpty}
 
 object Unparser {
-
-  type Env = Map[Id, Val]
 
   // Unparser for MiniScala.
   def unparse(n: AstNode, env: Env): String = n match {
@@ -51,9 +49,9 @@ object Unparser {
         case NegUnOp() => "-" + unparse(exp, env)
       }
     case BlockExp(vals, defs, exp) =>
-      var env1 = Map[Id, Val]()
+      var env1 = makeEmpty()
       for (d <- vals)
-        env1 = env1 + (d.x -> eval(d.exp, env1))
+        env1 = extend(env1, d.x, eval(d.exp, env1))
       unparse(exp, env)
     case TupleExp(exps) =>
       var res: String = ""

@@ -22,9 +22,31 @@ object Interpreter {
   case class TupleVal(vs: List[Val]) extends Val
 
   case class ClosureVal(params: List[FunParam], optrestype: Option[Type], body: Exp,
-                        env: scala.collection.mutable.Map[Id, Val]) extends Val
+                        env: Env) extends Val
 
-  type Env = Map[Id, Val]
+  type Env = Id => Option[Val]
+
+  def makeEmpty(): Env =
+    (x: Id) => None
+
+  def getOrElse(env: Env, id: Id, default: => Val): Val =
+    env(id).getOrElse(default)
+
+  def extend(e: Env, x: Id, v: Val): Env =
+    (y: Id) => if (x == y) Some(v) else e(y)
+
+  def extendWithClosure(env: Env, d: DefDecl): Env = {
+    def env2(y: Id): Option[Val] =
+      extend(env, d.fun, ClosureVal(d.params, d.optrestype, d.body, env2))(y)
+    env2
+  }
+
+  def extendWithClosures(env: Env, defs: List[DefDecl]): Env = {
+    def env2(y: Id): Option[Val] =
+      defs.foldLeft(env)((env3, d) => extend(env3, d.fun, ClosureVal(d.params, d.optrestype, d.body, env2)))(y)
+
+    env2
+  }
 
   /**
    * Evaluates an expression.
@@ -35,7 +57,7 @@ object Interpreter {
     case FloatLit(c) => FloatVal(c)
     case StringLit(c) => StringVal(c)
     case VarExp(x) =>
-      env.getOrElse(x, throw InterpreterError(s"Unknown identifier '$x'", e))
+      getOrElse(env, x, throw InterpreterError(s"Unknown identifier '$x'", e))
     case BinOpExp(leftexp, op, rightexp) =>
       val leftval = eval(leftexp, env)
       val rightval = eval(rightexp, env)
@@ -183,7 +205,7 @@ object Interpreter {
             if (c.pattern.length == vs.length) {
               var newEnv = env
               for ((patternVar, value) <- c.pattern.zip(vs)) {
-                newEnv = newEnv + (patternVar -> value)
+                newEnv = extend(newEnv, patternVar, value)
               }
               // Evaluate the case expression in the new environment
               matchResult = Some(eval(c.exp, newEnv))
@@ -210,10 +232,10 @@ object Interpreter {
           // evaluate all arguments in the current environment, not the new enviroment
           val argVals = args.map(arg => eval(arg, env))
           // Start on new env
-          var newEnv = Map[Id, Val]()
+          var newEnv = makeEmpty()
           // bind parameters to their argument values
           for ((param, argVal) <- params.zip(argVals)) {
-            newEnv = newEnv + (param.x -> argVal)
+            newEnv = extend(newEnv, param.x, argVal)
           }
           // Type checking if necessary
           for ((param, argVal) <- params.zip(argVals)) {
@@ -227,7 +249,7 @@ object Interpreter {
       }
     case LambdaExp(params, body) =>
       // Create a closure with type annotations
-      ClosureVal(params, None, body, scala.collection.mutable.Map() ++ env)
+      ClosureVal(params, None, body, env)
   }
 
       /**
@@ -235,15 +257,15 @@ object Interpreter {
        */
       def eval(d: Decl, env: Env, b: BlockExp): Env = d match {
         case ValDecl(x, opttype, exp) =>
-          env + (x -> eval(exp, env))
+          extend(env, x, eval(exp, env))
         case DefDecl(fun, params, optrestype, body) =>
           // Create a mute-Map to allow for self-reference
-          val recursiveEnv = scala.collection.mutable.Map[Id, Val]() ++ env
+          val recursiveEnv = env
           val closure = ClosureVal(params, optrestype, body, recursiveEnv)
           // Update the env
-          recursiveEnv(fun) = closure
+          extend(recursiveEnv, fun, closure)
           // We Return the updated original environment
-          env + (fun -> closure)
+          extend(env, fun, closure)
       }
 
       /**
@@ -299,10 +321,10 @@ object Interpreter {
        * Builds an initial environment, with a value for each free variable in the program.
        */
       def makeInitialEnv(program: Exp): Env = {
-        var env = Map[Id, Val]()
+        var env = makeEmpty()
         for (x <- Vars.freeVars(program)) {
           print(s"Please provide an integer value for the variable $x: ")
-          env = env + (x -> IntVal(StdIn.readInt()))
+          env = extend(env, x, IntVal(StdIn.readInt()))
         }
         env
       }

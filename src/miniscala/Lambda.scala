@@ -11,7 +11,7 @@ import scala.io.StdIn
   */
 object Lambda {
 
-  val FIX: Exp = Parser.parse("(x=>y=>(y(z=>x(x)(y)(z))))(x=>y=>(y(z=>x(x)(y)(z))))") // slide 26
+  val FIX: Exp = Parser.parse("(x=>y=>(y(z=>x(x)(y)(z))))(x=>y=>(y(z=>x(x)(y)(z))))").getOrElse(throw RuntimeException("The parser fix could not be applied")) // slide 26
 
   /**
     * Convenience function for creating a LambdaExp with a single parameter without type annotation.
@@ -128,7 +128,7 @@ object Lambda {
     }
 
   def decodeNumber(v: Val): Int = v match {
-    case ClosureVal(List(FunParam(x, _)), _, exp, env) =>
+    case ClosureVal(List(FunParam(x, _)), _, exp, env: Env) => // We need to type the env to avoid intepreter errors
       val unchurch = // see slide 22
         call(call(lambda(x, exp),
           lambda("n", BinOpExp(VarExp("n"), PlusBinOp(), IntLit(1)))),
@@ -141,7 +141,7 @@ object Lambda {
   }
 
   def decodeBoolean(v: Val): Boolean = v match {
-    case ClosureVal(List(FunParam(x, _)), _, exp, env) =>
+    case ClosureVal(List(FunParam(x, _)), _, exp, env: Env) => // We need to type the env to avoid intepreter errors
       val unchurch = // see slide 22
         call(call(lambda(x, exp), BoolLit(true)), BoolLit(false))
       Interpreter.eval(unchurch, env) match {
@@ -155,10 +155,10 @@ object Lambda {
     * Builds an initial environment, with a lambda-encoded value for each free variable in the program.
     */
   def makeInitialEnv(program: Exp): Env = {
-    var env = Map[Id, Val]()
+    var env = makeEmpty()
     for (x <- Vars.freeVars(program)) {
       print(s"Please provide an integer value for the variable $x: ")
-      env = env + (x -> Interpreter.eval(encode(IntLit(StdIn.readInt())), Map[Id, Val]()))
+      env = extend(env, x, Interpreter.eval(encode(IntLit(StdIn.readInt())), env))
     }
     env
   }
