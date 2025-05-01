@@ -33,10 +33,10 @@ object Interpreter {
     * Evaluates an expression.
     */
   def eval(e: Exp, env: Env, sto: Sto): (Val, Sto) = e match {
-    case IntLit(c) => IntVal(c, sto)
-    case BoolLit(c) => BoolVal(c, sto)
-    case FloatLit(c) => FloatVal(c, sto)
-    case StringLit(c) => StringVal(c, sto)
+    case IntLit(c) => (IntVal(c), sto)
+    case BoolLit(c) => ???
+    case FloatLit(c) => ???
+    case StringLit(c) => ???
     case VarExp(x) =>
       env.getOrElse(x, throw InterpreterError(s"Unknown identifier '$x'", e)) match {
         case RefVal(loc, _) => (sto(loc), sto)
@@ -59,31 +59,8 @@ object Interpreter {
             case (FloatVal(v1), StringVal(v2)) => (StringVal(v1.toString + v2), sto2)
             case _ => throw InterpreterError(s"Type mismatch at '+', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
           }
-        case MinusBinOp() =>
-          (leftval, rightval) match {
-            case (IntVal(v1), IntVal(v2)) => (IntVal(v1 - v2), sto2)
-            case (FloatVal(v1), FloatVal(v2)) => (FloatVal(v1 - v2), sto2)
-            case (IntVal(v1), FloatVal(v2)) => (FloatVal(v1 - v2), sto2)
-            case (FloatVal(v1), IntVal(v2)) => (FloatVal(v1 - v2), sto2)
-            case (StringVal(v1), IntVal(v2)) => (IntVal(v1.toInt - v2), sto2)
-            case (StringVal(v1), FloatVal(v2)) => (FloatVal(v1.toFloat - v2), sto2)
-            case (IntVal(v1), StringVal(v2)) => (FloatVal(v1 - v2.toFloat), sto2)
-            case (FloatVal(v1), StringVal(v2)) => (StringVal(v1 - v2.toFloat), sto2)
-            case _ => throw InterpreterError(s"Type mismatch at '-', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-          }
-        case MultBinOp() =>
-          (leftval, rightval) match {
-            case (IntVal(v1), IntVal(v2)) => (IntVal(v1 * v2), sto2)
-            case (FloatVal(v1), FloatVal(v2)) => (FloatVal(v1 * v2), sto2)
-            case (IntVal(v1), FloatVal(v2)) => (FloatVal(v1 * v2), sto2)
-            case (FloatVal(v1), IntVal(v2)) => (FloatVal(v1 * v2), sto2)
-            case (StringVal(v1), StringVal(v2)) => (StringVal(v1 * v2), sto2)
-            case (StringVal(v1), IntVal(v2)) => (StringVal(v1 * v2.toString), sto2)
-            case (StringVal(v1), FloatVal(v2)) => (StringVal(v1 * v2.toString), sto2)
-            case (IntVal(v1), StringVal(v2)) => (StringVal(v1.toString * v2), sto2)
-            case (FloatVal(v1), StringVal(v2)) => (StringVal(v1.toString * v2), sto2)
-            case _ => throw InterpreterError(s"Type mismatch at '*', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-          }
+        case MinusBinOp() => ???
+        case MultBinOp() => ???
         case DivBinOp() =>
           if (rightval == IntVal(0) || rightval == FloatVal(0.0f))
             throw InterpreterError(s"Division by zero", op)
@@ -94,61 +71,13 @@ object Interpreter {
             case (FloatVal(v1), IntVal(v2)) => (FloatVal(v1 / v2), sto2)
             case _ => throw InterpreterError(s"Type mismatch at '/', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
           }
-        case ModuloBinOp() =>
-          if (rightval == IntVal(0) || rightval == FloatVal(0.0f))
-            throw InterpreterError(s"Module by zero (divsiion by zero)", op)
-          (leftval, rightval) match {
-            case (IntVal(v1), IntVal(v2)) => (IntVal(v1 % v2), sto2)
-            case (FloatVal(v1), FloatVal(v2)) => (FloatVal(v1 % v2), sto2)
-            case (IntVal(v1), FloatVal(v2)) => (FloatVal(v1 % v2), sto2)
-            case (FloatVal(v1), IntVal(v2)) => (FloatVal(v1 % v2), sto2)
-            case _ => throw InterpreterError(s"Type mismatch at '%', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-          }
-        case EqualBinOp() =>
-          (leftval, rightval) match {
-            case (IntVal(v1), IntVal(v2)) => (BoolVal(v1 == v2), sto2)
-            case (FloatVal(v1), IntVal(v2)) => (BoolVal(v1 == v2), sto2)
-            case (IntVal(v1), FloatVal(v2)) => (BoolVal(v1 == v2), sto2)
-            case (StringVal(v1), IntVal(v2)) => (BoolVal(v1 == v2.toString), sto2)
-            case (IntVal(v1), StringVal(v2)) => (BoolVal(v1.toString == v2), sto2)
-            case (BoolVal(v1), BoolVal(v2)) => (BoolVal(v1 == v2), sto2)
-            case _ => throw InterpreterError(s"Type mismatch at '==', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-          }
-        case LessThanBinOp() =>
-          (leftval, rightval) match {
-            case (IntVal(v1), IntVal(v2)) => (BoolVal(v1 < v2), sto2)
-            case (FloatVal(v1), IntVal(v2)) => (BoolVal(v1 < v2), sto2)
-            case (IntVal(v1), FloatVal(v2)) => (BoolVal(v1 < v2), sto2)
-            case _ => throw InterpreterError(s"Type mismatch at '<', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-          }
-        case LessThanOrEqualBinOp() =>
-          (leftval, rightval) match {
-            case (IntVal(v1), IntVal(v2)) => (BoolVal(v1 <= v2), sto2)
-            case (FloatVal(v1), IntVal(v2)) => (BoolVal(v1 <= v2), sto2)
-            case (IntVal(v1), FloatVal(v2)) => (BoolVal(v1 <= v2), sto2)
-            case _ => throw InterpreterError(s"Type mismatch at '<=', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-          }
-        case MaxBinOp() =>
-          (leftval, rightval) match {
-            case (IntVal(v1), IntVal(v2)) => IntVal(v1)
-              if v1 > v2 then (IntVal(v1), sto2) else (IntVal(v2), sto2)
-            case (FloatVal(v1), IntVal(v2)) => FloatVal(v1)
-              if v1 > v2 then (FloatVal(v1), sto2) else (FloatVal(v2), sto2)
-            case (IntVal(v1), FloatVal(v2)) => FloatVal(v1)
-              if v1 > v2 then (FloatVal(v1), sto2) else (FloatVal(v2), sto2)
-            case _ => throw InterpreterError(s"Type mismatch at 'Max', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-            case AndBinOp() =>
-              (leftval, rightval) match {
-                case (BoolVal(v1), BoolVal(v2)) => BoolVal(v1 & v2)
-                case _ => throw InterpreterError(s"Type mismatch at '&', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-              }
-            case OrBinOp() =>
-              (leftval, rightval) match {
-                case (BoolVal(v1), BoolVal(v2)) => (BoolVal(v1 | v2), sto2)
-                case _ => throw InterpreterError(s"Type mismatch at '&', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
-              }
-          }
-      }
+        case ModuloBinOp() => ???
+        case EqualBinOp() => ???
+        case LessThanBinOp() => ???
+        case LessThanOrEqualBinOp() => ???
+        case MaxBinOp() => ???
+        case AndBinOp() => ???
+        case OrBinOp() => ???
       }
     case UnOpExp(op, exp) =>
       val (expval, sto1) = eval(exp, env, sto)
@@ -159,11 +88,7 @@ object Interpreter {
             case FloatVal(v) => (FloatVal(-v), sto1)
             case _ => throw InterpreterError(s"Type mismatch at '-', unexpected value ${valueToString(expval)}", op)
           }
-        case NotUnOp() =>
-          expval match {
-            case BoolVal(v) => (BoolVal(!v), sto1)
-            case _ => throw InterpreterError(s"Type mismatch at '!', unexpected value ${valueToString(expval)}", op)
-          }
+        case NotUnOp() => ???
       }
     case IfThenElseExp(condexp, thenexp, elseexp) => ???
     case b @ BlockExp(vals, vars, defs, exps) =>
@@ -196,44 +121,19 @@ object Interpreter {
           var res: Option[(Val, Sto)] = None
           for (c <- cases) {
             if (vs.length == c.pattern.length) {
-              res = res ++ c
+              ???
             }
           }
           res match {
-            case Some(v) => (v, sto1)
+            case Some(v) => v
             case None => throw InterpreterError(s"No case matches value ${valueToString(expval)}", e)
           }
         case _ => throw InterpreterError(s"Tuple expected at match, found ${valueToString(expval)}", e)
       }
-  case CallExp(funexp, args)
-  =>
-  // get a closure
-  val funVal = eval(funexp, env)
-  funVal match {
-    case closure@ClosureVal(params, optrestype, body, closureEnv, selfRef) =>
-      if (args.length != params.length) {
-        throw InterpreterError(s"Function called with ${args.length} arguments but expects ${params.length} parameters", e)
-      }
-      // evaluate all arguments in the current environment
-      val argVals = args.map(arg => eval(arg, env))
-      // Create a new environment
-      var newEnv = Map[Id, Val]() ++ closureEnv
-      // add self-reference to support recusion
-      selfRef.foreach { case (name, selfClosure) =>
-        newEnv = newEnv + (name -> selfClosure)
-      }
-      // bind the parameters
-      for ((param, argVal) <- params.zip(argVals)) {
-        newEnv = newEnv + (param.id -> argVal)
-      }
-      eval(body, newEnv)
-    case _ =>
-      throw InterpreterError(s"Expected a function but found ${valueToString(funVal)}", funexp)
-  }
-  case LambdaExp(params, optResultType, body)
-  =>
-  // Create a closure with type annotations
-  ClosureVal(params, optResultType, body, env)
+    case CallExp(funexp, args) =>
+      ???
+    case LambdaExp(params, body) =>
+      ???
     case AssignmentExp(x, exp) =>
       ???
     case WhileExp(cond, body) =>
@@ -251,13 +151,7 @@ object Interpreter {
     case VarDecl(x, opttype, exp) =>
       ???
     case DefDecl(fun, params, optrestype, body) =>
-      // Create a mute-Map to allow for self-reference
-      val recursiveEnv = scala.collection.mutable.Map[Id, Val]() ++ env
-      val closure = ClosureVal(params, optrestype, body, recursiveEnv)
-      // Update the env
-      recursiveEnv(fun) = closure
-      // We Return the updated original environment
-      env + (fun -> closure)
+      ???
   }
 
   /**

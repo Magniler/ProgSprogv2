@@ -2,7 +2,7 @@ package miniscala.parser
 
 import miniscala.Ast.*
 import miniscala.MiniScalaError
-import miniscala.parser.*
+import miniscala.parser.Tokens.*
 
 import java.io.{File, IOException}
 import scala.io.Source
@@ -23,6 +23,8 @@ object Parser extends PackratParsers {
   private lazy val expr: PackratParser[Exp] =
     lambda |
       ifthenelse |
+      wwhile |
+      assignment |
       mmatch |
       infixexpr
 
@@ -46,6 +48,12 @@ object Parser extends PackratParsers {
   private lazy val ifthenelse: PackratParser[Exp] = positioned {
     (IFF() ~! LEFT_PAREN() ~! expr ~! RIGHT_PAREN() ~! expr ~! EELSE() ~! expr) ^^ {
       case _ ~ _ ~ exp1 ~ _ ~ exp2 ~ _ ~ exp3 => IfThenElseExp(exp1, exp2, exp3)
+    }
+  }
+
+  private lazy val wwhile: PackratParser[Exp] = positioned {
+    (WWHILE() ~! LEFT_PAREN() ~! expr ~! RIGHT_PAREN() ~! expr) ^^ {
+      case _ ~ _ ~ exp1 ~ _ ~ exp2 => WhileExp(exp1, exp2)
     }
   }
 
@@ -82,18 +90,24 @@ object Parser extends PackratParsers {
         case _ ~ id ~ _ ~ ids ~ _ => (id :: ids).map(_.str)
       }
 
-  private lazy val blockel: PackratParser[AstNode] = valdecl | defdecl
+  private lazy val blockel: PackratParser[AstNode] = valdecl | vardecl | defdecl | expr
 
-  private lazy val blockelmseq: PackratParser[List[AstNode]] = rep { blockel ~ SEMICOLON() } ^^ (_.map(_._1))
+  private lazy val blockelmseq: PackratParser[List[AstNode]] = repsep(blockel, SEMICOLON())
 
-  type BlockTupleType = (List[ValDecl], List[DefDecl])
+  type BlockTupleType = (List[ValDecl], List[VarDecl], List[DefDecl], List[Exp])
 
   private def validBlock[T](l: List[T]): Option[BlockTupleType] = {
     val matchers = List[Function[T, Boolean]](
       { case _: ValDecl => true
       case _ => false
       },
+      { case _: VarDecl => true
+      case _ => false
+      },
       { case _: DefDecl => true
+      case _ => false
+      },
+      { case _: Exp => true
       case _ => false
       })
     val (remaining, splits) = matchers.foldLeft((l, List[List[T]]())) {
@@ -104,15 +118,23 @@ object Parser extends PackratParsers {
     val items = splits.reverse
     if (remaining.isEmpty) Some((
       items.head.map(_.asInstanceOf[ValDecl]),
-      items(1).map(_.asInstanceOf[DefDecl]))
+      items(1).map(_.asInstanceOf[VarDecl]),
+      items(2).map(_.asInstanceOf[DefDecl]),
+      items(3).map(_.asInstanceOf[Exp]))
     )
     else None
   }
 
   private lazy val block: PackratParser[BlockExp] = positioned {
-    ((LEFT_BRACE() ~! blockelmseq ~! expr ~! RIGHT_BRACE()) ^^ {
-      case _ ~ l ~ exp ~ _ => validBlock(l).map(t =>
-        BlockExp(t._1, t._2, exp)) } filter(_.isDefined)) ^^ {_.get}
+    ((LEFT_BRACE() ~! blockelmseq ~! RIGHT_BRACE()) ^^ {
+      case _ ~ l ~ _ => validBlock(l).map(t =>
+        BlockExp(t._1, t._2, t._3, t._4)) } filter(_.isDefined)) ^^ {_.get}
+  }
+
+  private lazy val assignment: PackratParser[Exp] = positioned {
+    (identifier ~ EQ() ~! expr) ^^ {
+      case id ~ _ ~ exp => AssignmentExp(id.str, exp)
+    }
   }
 
   private lazy val appl: PackratParser[List[Exp]] =
@@ -138,6 +160,12 @@ object Parser extends PackratParsers {
   private lazy val valdecl: PackratParser[Decl] = positioned {
     (VVAL() ~! identifier ~! opttypeannotation ~! EQ() ~! expr) ^^ {
       case _ ~ id ~ t ~ _ ~ exp => ValDecl(id.str, t, exp) }
+  }
+
+  private lazy val vardecl: PackratParser[Decl] = positioned {
+    (VVAR() ~! identifier ~! opttypeannotation ~! EQ() ~! expr) ^^ {
+      case _ ~ id ~ t ~ _ ~ exp => VarDecl(id.str, t, exp)
+    }
   }
 
   private lazy val defdecl: PackratParser[Decl] = positioned {
@@ -184,12 +212,13 @@ object Parser extends PackratParsers {
   }
 
   private lazy val simpletypeannotation: PackratParser[Type] = positioned {
-    (simpletype filter {(t: Tokens.SIMPLE_TYPE) => List("Int", "String", "Boolean", "Float").contains(t.str)}) ^^ {
+    (simpletype filter {(t: Tokens.SIMPLE_TYPE) => List("Int", "String", "Boolean", "Float", "Unit").contains(t.str)}) ^^ {
       t => t.str match {
         case "Int" => IntType()
         case "String" => StringType()
         case "Boolean" => BoolType()
         case "Float" => FloatType()
+        case "Unit" => TupleType(Nil)
       }
     }
   }
@@ -255,7 +284,7 @@ object Parser extends PackratParsers {
 
   private lazy val not: PackratParser[UnOp] = OP("!") ^^ { _ => NotUnOp() }
 
-  private def parseTokens(tokens: Seq[MiniScalaToken]): Option[Exp[] =
+  private def parseTokens(tokens: Seq[MiniScalaToken]): Exp =
     prog(MiniScalaTokenReader(tokens)) match {
       case p @ (NoSuccess(_, _) | Failure(_, _) | Error(_, _))  => throw SyntaxError(p.next.pos)
       case Success(result, _) => result
