@@ -149,7 +149,6 @@ object Interpreter {
               }
           }
       }
-      }
     case UnOpExp(op, exp) =>
       val (expval, sto1) = eval(exp, env, sto)
       op match {
@@ -165,7 +164,13 @@ object Interpreter {
             case _ => throw InterpreterError(s"Type mismatch at '!', unexpected value ${valueToString(expval)}", op)
           }
       }
-    case IfThenElseExp(condexp, thenexp, elseexp) => ???
+    case IfThenElseExp(condexp, thenexp, elseexp) =>
+      val (condval, sto1) = eval(condexp, env, sto)
+      condval match {
+        case BoolVal(true) => eval(thenexp, env, sto1)
+        case BoolVal(false) => eval(elseexp, env, sto1)
+        case _ => throw InterpreterError(s"Condition must be a boolean, found ${valueToString(condval)}", condexp)
+      }
     case b @ BlockExp(vals, vars, defs, exps) =>
       var env1 = env
       var sto1 = sto
@@ -205,40 +210,51 @@ object Interpreter {
           }
         case _ => throw InterpreterError(s"Tuple expected at match, found ${valueToString(expval)}", e)
       }
-  case CallExp(funexp, args)
-  =>
+  case CallExp(funexp, args) =>
   // get a closure
-  val funVal = eval(funexp, env)
-  funVal match {
-    case closure@ClosureVal(params, optrestype, body, closureEnv, selfRef) =>
-      if (args.length != params.length) {
-        throw InterpreterError(s"Function called with ${args.length} arguments but expects ${params.length} parameters", e)
-      }
-      // evaluate all arguments in the current environment
-      val argVals = args.map(arg => eval(arg, env))
-      // Create a new environment
-      var newEnv = Map[Id, Val]() ++ closureEnv
-      // add self-reference to support recusion
-      selfRef.foreach { case (name, selfClosure) =>
-        newEnv = newEnv + (name -> selfClosure)
-      }
-      // bind the parameters
-      for ((param, argVal) <- params.zip(argVals)) {
-        newEnv = newEnv + (param.id -> argVal)
-      }
-      eval(body, newEnv)
-    case _ =>
-      throw InterpreterError(s"Expected a function but found ${valueToString(funVal)}", funexp)
-  }
-  case LambdaExp(params, optResultType, body)
-  =>
+    val funVal = eval(funexp, env)
+    funVal match {
+      case closure@ClosureVal(params, optrestype, body, closureEnv, selfRef) =>
+        if (args.length != params.length) {
+          throw InterpreterError(s"Function called with ${args.length} arguments but expects ${params.length} parameters", e)
+        }
+        // evaluate all arguments in the current environment
+        val argVals = args.map(arg => eval(arg, env))
+        // Create a new environment
+        var newEnv = Map[Id, Val]() ++ closureEnv
+        // add self-reference to support recusion
+        selfRef.foreach { case (name, selfClosure) =>
+          newEnv = newEnv + (name -> selfClosure)
+        }
+        // bind the parameters
+        for ((param, argVal) <- params.zip(argVals)) {
+          newEnv = newEnv + (param.id -> argVal)
+        }
+        eval(body, newEnv)
+      case _ =>
+        throw InterpreterError(s"Expected a function but found ${valueToString(funVal)}", funexp)
+    }
+  case LambdaExp(params, optResultType, body) =>
   // Create a closure with type annotations
-  ClosureVal(params, optResultType, body, env)
+    (ClosureVal(params, optResultType, body, env), sto)
     case AssignmentExp(x, exp) =>
-      ???
-    case WhileExp(cond, body) =>
-      ???
-  }
+      val (v, sto1) = eval(exp, env, sto)
+      env.get(x) match {
+        case Some(RefVal(loc, opttype)) =>
+          opttype.foreach(t => checkValueType(v, Some(t), d))
+          val sto2 = sto1 + (loc -> v)
+          (unitVal, sto2)
+        case _ => throw InterpreterError(s"Cannot assign to non-variable '$x'", e)
+      }
+  case WhileExp(cond, body) =>
+    val (condval, sto1) = eval(cond, env, sto)
+    condval match {
+      case BoolVal(false) => (unitVal, sto1)
+      case BoolVal(true) =>
+        val (_, sto2) = eval(body, env, sto1)
+        eval(WhileExp(cond, body), env, sto2)
+      case _ => throw InterpreterError(s"Condition must be a boolean, found ${valueToString(condval)}", cond)
+    }
 
   /**
     * Evaluates a declaration.
@@ -249,7 +265,12 @@ object Interpreter {
       val env1 = env + (x -> v)
       (env1, sto1)
     case VarDecl(x, opttype, exp) =>
-      ???
+      val (v, sto1) = eval(exp, env, sto)
+      opttype.foreach(t => checkValueType(v, Some(t), d))
+      val loc = nextLoc(sto1)
+      val env1 = env + (x -> RefVal(loc, opttype))
+      val sto2 = sto1 + (loc -> v)
+      (env1, sto2)
     case DefDecl(fun, params, optrestype, body) =>
       // Create a mute-Map to allow for self-reference
       val recursiveEnv = scala.collection.mutable.Map[Id, Val]() ++ env

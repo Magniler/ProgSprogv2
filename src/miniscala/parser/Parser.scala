@@ -36,7 +36,8 @@ object Parser extends PackratParsers {
       chainexp
 
   private lazy val simpleexpr: PackratParser[Exp] =
-    block |
+    newobj |
+      block |
       simpleexpr1
 
   private lazy val simpleexpr1: PackratParser[Exp] =
@@ -90,11 +91,11 @@ object Parser extends PackratParsers {
         case _ ~ id ~ _ ~ ids ~ _ => (id :: ids).map(_.str)
       }
 
-  private lazy val blockel: PackratParser[AstNode] = valdecl | vardecl | defdecl | expr
+  private lazy val blockel: PackratParser[AstNode] = valdecl | vardecl | defdecl | classdecl | expr
 
   private lazy val blockelmseq: PackratParser[List[AstNode]] = repsep(blockel, SEMICOLON())
 
-  type BlockTupleType = (List[ValDecl], List[VarDecl], List[DefDecl], List[Exp])
+  type BlockTupleType = (List[ValDecl], List[VarDecl], List[DefDecl], List[ClassDecl], List[Exp])
 
   private def validBlock[T](l: List[T]): Option[BlockTupleType] = {
     val matchers = List[Function[T, Boolean]](
@@ -105,6 +106,9 @@ object Parser extends PackratParsers {
       case _ => false
       },
       { case _: DefDecl => true
+      case _ => false
+      },
+      { case _: ClassDecl => true
       case _ => false
       },
       { case _: Exp => true
@@ -120,7 +124,8 @@ object Parser extends PackratParsers {
       items.head.map(_.asInstanceOf[ValDecl]),
       items(1).map(_.asInstanceOf[VarDecl]),
       items(2).map(_.asInstanceOf[DefDecl]),
-      items(3).map(_.asInstanceOf[Exp]))
+      items(3).map(_.asInstanceOf[ClassDecl]),
+      items(4).map(_.asInstanceOf[Exp]))
     )
     else None
   }
@@ -128,7 +133,7 @@ object Parser extends PackratParsers {
   private lazy val block: PackratParser[BlockExp] = positioned {
     ((LEFT_BRACE() ~! blockelmseq ~! RIGHT_BRACE()) ^^ {
       case _ ~ l ~ _ => validBlock(l).map(t =>
-        BlockExp(t._1, t._2, t._3, t._4)) } filter(_.isDefined)) ^^ {_.get}
+        BlockExp(t._1, t._2, t._3, t._4, t._5)) } filter(_.isDefined)) ^^ {_.get}
   }
 
   private lazy val assignment: PackratParser[Exp] = positioned {
@@ -151,11 +156,19 @@ object Parser extends PackratParsers {
   }
 
   private lazy val chainexp: PackratParser[Exp] =
-    simpleexpr ~ rep(appl) ^^ {
+    simpleexpr ~ rep(appl | lookup) ^^ {
       case e ~ es => es.foldLeft(e) {
-        case (e1, e2) => CallExp(e1, e2)
+        case (e1, e2: IDENTIFIER) => LookupExp(e1, e2.str)
+        case (e1, e2) => CallExp(e1, e2.asInstanceOf[List[Exp]])
       }
     }
+
+  private lazy val lookup: PackratParser[IDENTIFIER] =
+    DOT() ~! identifier ^^ { case _ ~ id => id }
+
+  private lazy val newobj: PackratParser[Exp] = positioned {
+    NEW() ~! identifier ~! appl ^^ { case _ ~ name ~ args => NewObjExp(name.str, args)}
+  }
 
   private lazy val valdecl: PackratParser[Decl] = positioned {
     (VVAL() ~! identifier ~! opttypeannotation ~! EQ() ~! expr) ^^ {
@@ -172,6 +185,13 @@ object Parser extends PackratParsers {
     (DDEF() ~! identifier ~! LEFT_PAREN() ~! repsep(identifier ~! opttypeannotation, COMMA()) ~! RIGHT_PAREN() ~! opttypeannotation ~! EQ() ~! expr) ^^ {
       case _ ~ id ~ _ ~ identifiers ~ _ ~ retType ~ _ ~ exp =>
         DefDecl(id.str, identifiers.map(p => FunParam(p._1.str, p._2).setPos(p._1.pos)), retType, exp)
+    }
+  }
+
+  private lazy val classdecl: PackratParser[Decl] = positioned {
+    CLASS() ~! identifier ~! LEFT_PAREN() ~! repsep(identifier ~! opttypeannotation, COMMA()) ~ RIGHT_PAREN() ~! block ^^ {
+      case _ ~ name ~ _ ~ params ~ _ ~ body =>
+        ClassDecl(name.str, params.map(p => FunParam(p._1.str, p._2).setPos(p._1.pos)), body)
     }
   }
 
