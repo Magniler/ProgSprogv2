@@ -28,14 +28,10 @@ object Main {
         // parse the program
         val program = Parser.parse(Parser.readFile(file))
 
-        // unparse the program, if enabled
-        if (Options.unparse)
-          println(Unparser.unparse(program))
-
         // type check the program, if enabled
         if (Options.types) {
           val initialTypeEnv = TypeChecker.makeInitialTypeEnv(program)
-          TypeChecker.typeCheck(program, initialTypeEnv, Map())
+          TypeChecker.typeCheck(program, initialTypeEnv)
         }
 
         // execute the program, if enabled

@@ -97,20 +97,55 @@ object AbstractMachine {
             val c1 = popInt()
             frame.opstack.push(IntVal(c1 / c2))
           case Eq =>
-            ???
+            val c2 = popInt()
+            val c1 = popInt()
+            if (c1 == c2) {
+              frame.opstack.push(IntVal(1))
+            } else {
+              frame.opstack.push(IntVal(0))
+            }
           case Lt =>
-            ???
+            val c2 = popInt()
+            val c1 = popInt()
+            if (c1 < c2) {
+              frame.opstack.push(IntVal(1))
+            } else {
+              frame.opstack.push(IntVal(0))
+            }
           case Leq =>
-            ???
+            val c2 = popInt()
+            val c1 = popInt()
+            if (c1 <= c2) {
+              frame.opstack.push(IntVal(1))
+            } else {
+              frame.opstack.push(IntVal(0))
+            }
           case And =>
-            ???
+            val c2 = popInt()
+            val c1 = popInt()
+            if (c1 == 1 && c2 == 1) {
+              frame.opstack.push(IntVal(1))
+            } else {
+              frame.opstack.push(IntVal(0))
+            }
           case Or =>
-            ???
+            val c2 = popInt()
+            val c1 = popInt()
+            if (c1 == 1 || c2 == 1) {
+              frame.opstack.push(IntVal(1))
+            } else {
+              frame.opstack.push(IntVal(0))
+            }
           case Neg =>
             val c = popInt()
             frame.opstack.push(IntVal(-c))
           case Not =>
-            ???
+            val c = popInt()
+            if (c.toInt == 0) {
+              frame.opstack.push(IntVal(1))
+            } else {
+              frame.opstack.push(IntVal(0))
+            }
           case Dup =>
             frame.opstack.push(frame.opstack.top)
           case Pop =>
@@ -123,12 +158,14 @@ object AbstractMachine {
           case Loop(condcode, bodycode) =>
             frame.code = Branch(bodycode ++ List(Loop(condcode, bodycode)), Nil) :: frame.code
           case EnterScope =>
-            ???
+            val c = frame.opstack.pop()
+            frame.envstack.push(c)
           case ExitScope(num) =>
             for (_ <- 1 to num)
               frame.envstack.pop()
           case Read(index) =>
-            ???
+            val c_i = frame.envstack(index)
+            frame.opstack.push(c_i)
           case Alloc =>
             frame.opstack.push(RefVal(store.size))
             store += IntVal(0)

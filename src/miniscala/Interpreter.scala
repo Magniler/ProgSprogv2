@@ -1,7 +1,6 @@
 package miniscala
 
 import miniscala.Ast.*
-import miniscala.Unparser.unparse
 
 import scala.io.StdIn
 
@@ -71,7 +70,7 @@ object Interpreter {
             case (StringVal(v1), IntVal(v2)) => (IntVal(v1.toInt - v2), sto2)
             case (StringVal(v1), FloatVal(v2)) => (FloatVal(v1.toFloat - v2), sto2)
             case (IntVal(v1), StringVal(v2)) => (FloatVal(v1 - v2.toFloat), sto2)
-            case (FloatVal(v1), StringVal(v2)) => (StringVal(v1 - v2.toFloat), sto2)
+            case (FloatVal(v1), StringVal(v2)) => (FloatVal(v1 - v2.toFloat), sto2)
             case _ => throw InterpreterError(s"Type mismatch at '-', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
           }
         case MultBinOp() =>
@@ -80,11 +79,10 @@ object Interpreter {
             case (FloatVal(v1), FloatVal(v2)) => (FloatVal(v1 * v2), sto2)
             case (IntVal(v1), FloatVal(v2)) => (FloatVal(v1 * v2), sto2)
             case (FloatVal(v1), IntVal(v2)) => (FloatVal(v1 * v2), sto2)
-            case (StringVal(v1), StringVal(v2)) => (StringVal(v1 * v2), sto2)
-            case (StringVal(v1), IntVal(v2)) => (StringVal(v1 * v2.toString), sto2)
-            case (StringVal(v1), FloatVal(v2)) => (StringVal(v1 * v2.toString), sto2)
-            case (IntVal(v1), StringVal(v2)) => (StringVal(v1.toString * v2), sto2)
-            case (FloatVal(v1), StringVal(v2)) => (StringVal(v1.toString * v2), sto2)
+            case (StringVal(v1), IntVal(v2)) => (StringVal(v1 * v2), sto2)
+            case (StringVal(v1), FloatVal(v2)) => (StringVal(v1 * v2.toInt), sto2)
+            case (IntVal(v1), StringVal(v2)) => (StringVal(v2 * v1), sto2)
+            case (FloatVal(v1), StringVal(v2)) => (StringVal(v2 * v1.toInt), sto2)
             case _ => throw InterpreterError(s"Type mismatch at '*', unexpected values ${valueToString(leftval)} and ${valueToString(rightval)}", op)
           }
         case DivBinOp() =>
@@ -195,7 +193,7 @@ object Interpreter {
               var env1 = env
               for ((x, v) <- c.pattern.zip(vs))
                 env1 = env1 + (x -> v)
-              val (v1, sto2) = eval(c.body, env1, cenv, sto1)
+              val (v1, sto2) = eval(c.exp, env1, cenv, sto1)
               res = Some((v1, sto2))
             }
           }
@@ -233,8 +231,8 @@ object Interpreter {
         case _ =>
           throw InterpreterError(s"Expected a function but found ${valueToString(funval)}", funexp)
       }
-    case LambdaExp(params, optResultType, body) =>
-      (ClosureVal(params, optResultType, body, env, cenv), sto)
+    case LambdaExp(params, body) =>
+      (ClosureVal(params, null, body, env, cenv), sto)
     case AssignmentExp(x, exp) =>
       val (v, sto1) = eval(exp, env, cenv, sto)
       env.get(x) match {
@@ -393,7 +391,7 @@ object Interpreter {
             checkTypesEqual(t, p.opttype, n)
           checkTypesEqual(restype, optcrestype, n)
         case _ =>
-          throw InterpreterError(s"Type mismatch: value ${valueToString(v)} does not match type ${unparse(t)}", n)
+          throw InterpreterError(s"Type mismatch: value ${valueToString(v)} does not match type", n)
       }
     case None => // do nothing
   }
@@ -404,7 +402,7 @@ object Interpreter {
   def checkTypesEqual(t1: Type, ot2: Option[Type], n: AstNode): Unit = ot2 match {
     case Some(t2) =>
       if (t1 != t2)
-        throw InterpreterError(s"Type mismatch: type ${unparse(t1)} does not match type ${unparse(t2)}", n)
+        throw InterpreterError(s"Type mismatch: type does not match type", n)
     case None => // do nothing
   }
 
@@ -417,8 +415,7 @@ object Interpreter {
     case BoolVal(c) => c.toString
     case StringVal(c) => c
     case TupleVal(vs) => vs.map(valueToString).mkString("(", ",", ")")
-    case ClosureVal(params, _, exp, _, _) => // the resulting string ignores the result type annotation and the declaration environments
-      s"<(${params.map(unparse).mkString(",")}), ${unparse(exp)}>"
+    case ClosureVal(params, _, exp, _, _) => "TODO"// the resulting string ignores the result type annotation and the declaration environments
     case RefVal(loc, _) => s"#$loc" // the resulting string ignores the type annotation
     case ObjRefVal(loc) => s"object#$loc"
     case _ => throw RuntimeException(s"Unexpected value $v") // (unreachable case)

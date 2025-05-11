@@ -13,7 +13,7 @@ object Vars {
     case BinOpExp(leftexp, _, rightexp) => freeVars(leftexp) ++ freeVars(rightexp)
     case UnOpExp(_, exp) => freeVars(exp)
     case IfThenElseExp(condexp, thenexp, elseexp) => freeVars(condexp) ++ freeVars(thenexp) ++ freeVars(elseexp)
-    case BlockExp(vals, vars, defs, exps) =>
+    case BlockExp(vals, vars, defs, classdefs, exps) =>
       var fv = Set[Id]()
       for (e2 <- exps)
         fv = fv ++ freeVars(e2)

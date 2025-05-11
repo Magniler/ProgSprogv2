@@ -40,47 +40,96 @@ object Compiler {
       case IntLit(c) =>
         List(Const(c))
       case BoolLit(true) =>
-        ???
+        List(True)
       case BoolLit(false) =>
-        ???
+        List(False)
       case BinOpExp(leftexp, op, rightexp) =>
-        compile(leftexp, idstack, ???) ++ compile(rightexp, idstack, ???) ++ List(op match {
+        compile(leftexp, idstack, false) ++ compile(rightexp, idstack, false) ++ List(op match {
           case PlusBinOp() => Add
           case MinusBinOp() => Sub
           case MultBinOp() => Mul
           case DivBinOp() => Div
-          case EqualBinOp() => ???
-          case LessThanBinOp() => ???
-          case LessThanOrEqualBinOp() => ???
-          case AndBinOp() => ???
-          case OrBinOp() => ???
+          case EqualBinOp() => Eq
+          case LessThanBinOp() => Lt
+          case LessThanOrEqualBinOp() => Leq
+          case AndBinOp() => And
+          case OrBinOp() => Or
           case _ => throw UnsupportedFeatureError(e)
         })
       case UnOpExp(op, exp) =>
-        compile(exp, idstack, ???) ++ List(op match {
+        compile(exp, idstack, false) ++ List(op match {
           case NegUnOp() => Neg
-          case NotUnOp() => ???
+          case NotUnOp() => Not
         })
       case IfThenElseExp(condexp, thenexp, elseexp) =>
-        compile(condexp, idstack, ???) ++ List(Branch(compile(thenexp, idstack, ???), compile(elseexp, idstack, ???)))
+        compile(condexp, idstack, false) ++ List(Branch(compile(thenexp, idstack, tailpos), compile(elseexp, idstack, tailpos)))
       case WhileExp(cond, body) =>
-        List(Loop(compile(body, idstack, ???), compile(cond, idstack, ???)), EmptyTuple)
+        List(Loop(compile(body, idstack, false), compile(cond, idstack, false)), EmptyTuple)
       case BlockExp(vals, vars, defs, Nil, exps) =>
-        ???
+        var code = List[Instruction]()
+        var newIdstack = idstack
+        var numDeclared = 0
+        // Process val declarations
+        for (valDecl <- vals) {
+          code = code ++ compile(valDecl.exp, newIdstack, false) ++ List(EnterScope)
+          newIdstack = IdDesc(valDecl.x, mutable = false) :: newIdstack
+          numDeclared += 1
+        }
+        // Process var declarations
+        for (varDecl <- vars) {
+          code = code ++ List(Alloc, Dup) ++
+            compile(varDecl.exp, newIdstack, false) ++
+            List(Store, EnterScope)
+          newIdstack = IdDesc(varDecl.x, mutable = true) :: newIdstack
+          numDeclared += 1
+        }
+        // Process def declarations
+        if (defs.nonEmpty) {
+          // First, create all the lambda closures
+          for (defDecl <- defs) {
+            val freeVars = Vars.freeVars(defDecl.body).toList.sorted
+            val params = defDecl.params
+            code = code ++ compileFun(params, defDecl.body, freeVars, defs, newIdstack)
+            newIdstack = IdDesc(defDecl.fun, mutable = false) :: newIdstack
+            numDeclared += 1
+          }
+          // Then use EnterScopeDefs to support recursion
+          code = code ++ List(EnterScopeDefs(defs.length))
+        }
+        // Process expressions
+        for (i <- 0 until exps.length - 1) {
+          // For all expressions except the last one, discard their values
+          code = code ++ compile(exps(i), newIdstack, false) ++ List(Pop)
+        }
+        // Compile the last expression (its value is the block's return value)
+        if (exps.nonEmpty) {
+          code = code ++ compile(exps.last, newIdstack, tailpos)
+        } else {
+          // If no expressions, return unit value
+          code = code ++ List(EmptyTuple)
+        }
+        // Clean up the environment by popping all declared variables
+        code = code ++ List(ExitScope(numDeclared))
+        code
       case VarExp(x) =>
-        ???
+        val (index, mutable) = lookup(x, idstack)
+        if (mutable)
+          List(Read(index), Load)
+        else
+          List(Read(index))        // For immutable variables (val)
       case AssignmentExp(x, exp) =>
-        ???
+        val (index, mutable) = lookup(x, idstack)
+        if (!mutable) throw UnsupportedFeatureError(e) // Check mutablility
+        List(Read(index)) ++ compile(exp, idstack, false) ++ List(Store, EmptyTuple)
       case LambdaExp(params, body) =>
         compileFun(params, body, Vars.freeVars(e).toList.sorted, Nil, idstack)
       case CallExp(funexp, args) =>
         // compile funexp and args, and then add a Call instruction
-        compile(funexp, idstack, ???) ++ args.flatMap(arg => compile(arg, idstack, ???)) ++ List(Call(args.length, tailpos))
+        compile(funexp, idstack, tailpos) ++ args.flatMap(arg => compile(arg, idstack, false)) ++ List(Call(args.length, tailpos))
       case _ => throw UnsupportedFeatureError(e)
     }
-
     val freeids = Vars.freeVars(e).toList.sorted
-    Executable(freeids, compile(e, freeids.map(x => IdDesc(x, mutable = false)), ???))
+    Executable(freeids, compile(e, freeids.map(x => IdDesc(x, mutable = false)), false))
   }
 
   class UnsupportedFeatureError(node: AstNode) extends MiniScalaError(s"Sorry, I don't know how to compile $node", node.pos)
